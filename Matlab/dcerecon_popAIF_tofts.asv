@@ -1,0 +1,221 @@
+function dcerecon_popAIF(input4Dfile, outputpath, maskfile)
+
+if (nargin==2)
+	maskfile='';
+end
+
+% load dependent parameters
+T1_tissue = 1000; %assumed T1 in tissue
+T1_fixed = T1_tissue; %in milliseconds - NOTE THAT THIS MAY BE USED FOR THE CONCENTRATION CALCULATION INSTEAD OF T1 MAPS
+r1_Cagent = 0.0045; %Relaxometry of Contrast Agent used jkc
+T1_blood = 1440;
+hematocrit = .45;
+TR  = 5; %5; % Repetition time in millisec!
+alpha=30;alpha_rad = (pi/180).*alpha;
+Total_scan_time_mins = 11; %11; %jkc
+scan_start_time_seconds = 60;
+firstbaseline = 1;
+firstBaseline = firstbaseline;
+init_params=[1 1];
+
+
+                if (exist(input4Dfile))
+                        dce4D=load_untouch_nii(input4Dfile);
+                        size(dce4D.img)
+                        xsize=size(dce4D.img,1);
+                        ysize=size(dce4D.img,2);
+                        tsize=size(dce4D.img,3);
+                    duration_seconds = 60*Total_scan_time_mins;
+                    FR = duration_seconds/tsize;
+                    lastbaseline = round(scan_start_time_seconds/FR);
+                    lastBaseline = lastbaseline;
+                    lpbs=lastbaseline+1;     %dynamic #
+                    FR_mins = FR/60;         % in minutes
+
+                                            ktransmap=zeros(xsize,ysize,tsize);
+                        vemap=zeros(xsize,ysize,tsize);
+                        aucmap=zeros(xsize,ysize,tsize);
+                                                ktransmap=zeros(xsize,ysize,tsize);
+                        vemap=zeros(xsize,ysize,tsize);
+                        aucmap=zeros(xsize,ysize,tsize);
+                    
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                        % generate aif (popAIF)
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                        AIF=generateAIF(tsize,FR,lpbs);
+                        gd_AIF = AIF;
+%                         [AIF]=dce4D.img(19,75,:);
+%                         [AIF]=double(AIF(:));
+%                         
+%                         baselineAIF = mean(AIF(firstBaseline:lastBaseline));
+%                         relAIF = AIF./baselineAIF;
+%                         
+%                         R1pre = 1./T1_blood;   %1/msec
+%                         a = exp(-TR.*R1pre);
+%                         TERM = (1-a)./(1-a.*cos(alpha_rad)); 
+%                         relAIF = relAIF.*TERM;
+%                         
+%                         gd_log_term = (relAIF-1)./(a.*(relAIF.*cos(alpha_rad)-1));
+%                         gd_AIF = -(1./(r1_Cagent*TR)) .* log(gd_log_term);
+%                         gd_AIF = gd_AIF./(1-hematocrit);
+
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                        % calculate ktrans, ve at each voxel
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                          for x=1:xsize
+                            for y=1:ysize
+                              for z=1:zsize
+%                           for x=2
+%                             for y=11
+%                                 tic
+%                                 s=dce4D.img(x,y,:);
+%                                 input_signal_4D=zeros(1,1,tsize);
+%                                 for n=1:tsize
+%                                         input_signal_4D(1,1,n)=s(1,1,n);
+%                                 end
+%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                 % convert 4D signal to 4D concentration (reference to
+%                                 % Step2a_DRO_signal_to_concentration.m)
+%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                 signal_4D = input_signal_4D;
+%                                 baselineVol_3D = mean(signal_4D(:,:,firstBaseline:lastBaseline),3);
+%                                 if (baselineVol_3D == 0)
+%                                 ktransmap(x,y)=0;
+%                                 vemap(x,y)=0;
+%                                 aucmap(x,y)=0;
+%                                 continue
+%                                 end
+%                                 R1pre = 1./T1_fixed;   %1/msec
+%                                 a = exp(-TR.*R1pre);
+%                                 TERM = (1-a)./(1-a.*cos(alpha_rad));
+%                                 relSignal_4D = zeros(size(signal_4D));
+%                                 for i=1:size(signal_4D,3)
+%                                     relSignal_4D(:,:,i) = signal_4D(:,:,i)./baselineVol_3D;
+%                                 end
+%                                 y_4D = relSignal_4D.*(repmat(TERM,[size(signal_4D,1),size(signal_4D,2),size(signal_4D,3)]));
+%                                 % Use y_4D to calculate CA concentration:
+%                                 gd_conc_4D = zeros(size(relSignal_4D));
+%                                 
+%                                 for i=1:size(relSignal_4D,3);
+%                                     y_3D = squeeze(y_4D(:,:,i));
+%                                     gd_log_term = (y_3D-1)./(a.*(y_3D.*cos(alpha_rad)-1));
+%                                     gd_conc_4D(:,:,i) = -(1./(r1_Cagent*TR)) .* log(gd_log_term);
+%                                 end
+%                                
+%                                 
+%                                 gd_conc_4D;
+%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                 % fit ktrans and Ve (simplex)
+%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                 obs_conc=squeeze(gd_conc_4D);
+%                                 init_params=[-2, .1];
+%                                 fprintf('%d,%d', x,y)
+%                                 [kin_par est_conc] = Step4b_Simplex_Fit_Kinetic_Tofts(obs_conc, gd_AIF, init_params, FR_mins);
+%                                 k1=exp(kin_par(1)); ktrans=k1;
+%                                 Ve=1/(1+exp(-kin_par(2)));
+%                                 k2 = k1/Ve;
+%                                 init_params=[kin_par(1) kin_par(2)];
+% %                                 toc
+%                                 if (ktrans > 5)
+%                                     ktrans = 0;
+%                                 end
+%                                 if (Ve > 5)
+%                                     Ve = 0;
+%                                 end
+%                                 fprintf('at (%d, %d), Ve=%f, ktrans=%f\n', x, y, Ve, ktrans);
+%                                 ktransmap(x,y)=ktrans;
+%                                 vemap(x,y)=Ve;
+%                                 aucmap(x,y)=trapz(obs_conc)/trapz(AIF);
+%                                 s=dce4D.img(x,y,:);
+%                                 input_signal_4D=zeros(1,1,tsize);
+%                                 for n=1:tsize
+%                                         input_signal_4D(1,1,n)=s(1,1,n);
+%                                 end
+                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                % convert 4D signal to 4D concentration (reference to
+                                % Step2a_DRO_signal_to_concentration.m)
+                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                signal_4D = input_signal_4D;
+                                baselineVol_3D = mean(signal_4D(:,:,:,firstBaseline:lastBaseline),3);
+                                if (baselineVol_3D == 0)
+                                ktransmap(x,y,z)=0;
+                                vemap(x,y,z)=0;
+                                aucmap(x,y,z)=0;
+                                continue
+                                end
+                                R1pre = 1./T1_fixed;   %1/msec
+                                a = exp(-TR.*R1pre);
+                                TERM = (1-a)./(1-a.*cos(alpha_rad));
+                                relSignal_4D = zeros(size(signal_4D));
+                                for i=1:size(signal_4D,4)
+                                    relSignal_4D(:,:,:,i) = signal_4D(:,:,:,i)./baselineVol_3D;
+                                end
+                                y_4D = relSignal_4D.*(repmat(TERM,[size(signal_4D,1),size(signal_4D,2),size(signal_4D,3)]));
+                                % Use y_4D to calculate CA concentration:
+                                gd_conc_4D = zeros(size(relSignal_4D));
+                                
+                                for i=1:size(relSignal_4D,4);
+                                    y_3D = squeeze(y_4D(:,:,:,i));
+                                    gd_log_term = (y_3D-1)./(a.*(y_3D.*cos(alpha_rad)-1));
+                                    gd_conc_4D(:,:,:,i) = -(1./(r1_Cagent*TR)) .* log(gd_log_term);
+                                end
+                               
+                                
+                                gd_conc_4D;
+                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                % fit ktrans and Ve (simplex)
+                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                obs_conc=squeeze(gd_conc_4D);
+                                init_params=[-2, .1];
+                                fprintf('%d,%d', x,y,z)
+                                [kin_par est_conc] = Step4b_Simplex_Fit_Kinetic_Tofts(obs_conc, gd_AIF, init_params, FR_mins);
+                                k1=exp(kin_par(1)); ktrans=k1;
+                                Ve=1/(1+exp(-kin_par(2)));
+                                k2 = k1/Ve;
+                                init_params=[kin_par(1) kin_par(2)];
+%                                 toc
+                                if (ktrans > 5)
+                                    ktrans = 0;
+                                end
+                                if (Ve > 5)
+                                    Ve = 0;
+                                end
+                                fprintf('at (%d, %d, %d), Ve=%f, ktrans=%f\n', x, y,z, Ve, ktrans);
+                                ktransmap(x,y,z)=ktrans;
+                                vemap(x,y,z)=Ve;
+                                aucmap(x,y,z)=trapz(obs_conc)/trapz(AIF);
+
+                              end
+                            end
+                          end
+                        end
+    
+                        % save ktrans, ve, auc maps
+                        tmp=dce4D;
+                        tmp.hdr.dime.dim(1)=2;
+                        tmp.hdr.dime.dim(4)=1;
+                        tmp.hdr.dime.pixdim(1)=1;
+                        tmp.hdr.dime.datatype=16;
+                        tmp.hdr.dime.bitpix=32;  % make sure it is a float image
+                        tmp.hdr.dime.cal_max=0;
+                        tmp.hdr.dime.glmax=0;
+            
+                        path = input4Dfile;
+                                    
+                        tmp.img=ktransmap;
+                        fn=['ktrans.nii.gz']
+                        save_untouch_nii(tmp,strcat(outputpath, fn));
+
+                        tmp.img=vemap;
+                        fn=['ve.nii.gz']
+                        save_untouch_nii(tmp,strcat(outputpath, fn));
+
+                        tmp.img=aucmap;
+                        fn=['auc.nii.gz']
+                        save_untouch_nii(tmp,strcat(outputpath, fn));
+                        
+                        tmp.img = tmp.img(:,:,1)
+                        fn=['dce_01.nii.gz']
+                        save_untouch_nii(tmp,strcat(outputpath, fn));
+                                     
+		end                     
