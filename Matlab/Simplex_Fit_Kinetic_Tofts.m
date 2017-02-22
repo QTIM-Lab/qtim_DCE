@@ -11,7 +11,7 @@
 % updated by Andrew Beers <abeers@mgh.harvard.edu>%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [kinetic_params estimated_concentration] = Step4b_Simplex_Fit_Kinetic_Tofts(observed_concentration, gd_AIF, initial_params, FR_mins)
+function [kinetic_params, estimated_concentration] = Simplex_Fit_Kinetic_Tofts(observed_concentration, gd_AIF, initial_params, FR_mins)
 
 % Create a time series for the given data. The Tofts model assumes time is
 % counted in minutes.

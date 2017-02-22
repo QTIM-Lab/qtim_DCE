@@ -61,7 +61,6 @@ else
     if ~(isempty(T1_map))
         T1_map_file = load_untouch_nii(T1_map);
         T1_map_img = T1_map_file.img;
-        T1_mapping = 1;
 
         if (gaussian_kernel_blur > 0)
             for z = 1:size(T1_map_img,3)
@@ -75,14 +74,14 @@ else
     end
     
     time_interval_seconds = total_scan_time_seconds/tsize;
-    time_interval_mins = time_interval/60;
+    time_interval_mins = time_interval_seconds/60;
     last_baseline = round(bolus_arrival_time_seconds/time_interval_seconds);
     bolus_start = last_baseline + 1;
 
     % note: make this work irrespective of dimensions
-    ktransmap=zeros(xsize,ysize,zsize,tsize);
-    vemap=zeros(xsize,ysize,zsize,tsize);
-    aucmap=zeros(xsize,ysize,zsize,tsize);
+    ktransmap=zeros(xsize,ysize,zsize);
+    vemap=zeros(xsize,ysize,zsize);
+    aucmap=zeros(xsize,ysize,zsize);
 
     % Parse provided AIF. This presumes the provided AIF is already
     % converted to signal.
@@ -133,7 +132,7 @@ else
     else
         % If no AIF provided, create a population AIF using the Parker
         % model.
-        gd_AIF=generateAIF(tsize,time_interval,bolus_start);
+        gd_AIF=generateAIF(tsize,time_interval_seconds,bolus_start);
         
         % The Parker model was meant for Gd doses of 1 mmol. We have
         % here an ad-hoc method for other doses, but it isn't perfectly
@@ -141,7 +140,7 @@ else
         % be added in the future.
         if (gd_dose ~= 1)
             dose_scalar = 1/gd_dose;
-            AIF=generateAIF(int64(tsize*dose_scalar),time_interval,bolus_start);
+            AIF=generateAIF(int64(tsize*dose_scalar),time_interval_seconds,bolus_start);
             newAIF = AIF;
             for p = int64((bolus_start):dose_scalar:(dose_scalar*tsize-(bolus_start)))
                 newAIF(bolus_start + (p-bolus_start)/2) = (AIF(p) + AIF(p+1))/2;
@@ -197,201 +196,118 @@ else
         end
     end
     
+    % Convert input signal volume
+    baselineVol_3D = mean(dce4D.img(:,:,:,first_baseline:last_baseline),4);
+    a = exp(-TR.*R1_pre);
+    TERM = (1-a)./(1-a.*cos(alpha_rad));
+    relSignal_4D = zeros(size(dce4D.img));
+    for i=1:size(dce4D.img, 4)
+        relSignal_4D(:,:,:,i) = double(dce4D.img(:,:,:,i)) ./ baselineVol_3D .* TERM;
+        relSignal_4D(:,:,:,i) = (relSignal_4D(:,:,:,i) - 1) ./ (a .* (relSignal_4D(:,:,:,i) .* cos(alpha_rad) - 1));
+    end
+    relSignal_4D = -(1./(relaxivity*TR)) .* log(relSignal_4D);
+    
     % Start parallel pool, and make sure an instance of parallel pool is
     % not already running. If an old instance has the wrong number of
     % workers, restart it.
     if processes > 0
         current_pool = gcp('nocreate');
-        if isempty(current_pool)
-            parpool(processes)
-        elseif current_pool.NumWorkers ~= processes
-            delete(gcp('nocreate'))
-            parpool(processes)
+        if ~(isempty(current_pool))
+            if ~(current_pool.NumWorkers == processes)
+                delete(gcp('nocreate'));
+                parpool(processes);
+            end
+        else
+            parpool(processes);
         end
     end
-            
-            
-                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                        % calculate ktrans, ve at each voxel
-                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                          parfor x=1:xsize
-                            for y=1:ysize
-                              for z=1:zsize
-%                           for x=2
-%                             for y=11
-%                                 for z=15
-%                                 tic
-%                                 s=dce4D.img(x,y,:);
-%                                 input_signal_4D=zeros(1,1,tsize);
-%                                 for n=1:tsize
-%                                         input_signal_4D(1,1,n)=s(1,1,n);
-%                                 end
-%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%                                 % convert 4D signal to 4D concentration (reference to
-%                                 % Step2a_DRO_signal_to_concentration.m)
-%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%                                 signal_4D = input_signal_4D;
-%                                 baselineVol_3D = mean(signal_4D(:,:,first_baseline:last_baseline),3);
-%                                 if (baselineVol_3D == 0)
-%                                 ktransmap(x,y)=0;
-%                                 vemap(x,y)=0;
-%                                 aucmap(x,y)=0;
-%                                 continue
-%                                 end
-%                                 R1pre = 1./T1_tissue;   %1/msec
-%                                 a = exp(-TR.*R1pre);
-%                                 TERM = (1-a)./(1-a.*cos(alpha_rad));
-%                                 relSignal_4D = zeros(size(signal_4D));
-%                                 for i=1:size(signal_4D,3)
-%                                     relSignal_4D(:,:,i) = signal_4D(:,:,i)./baselineVol_3D;
-%                                 end
-%                                 y_4D = relSignal_4D.*(repmat(TERM,[size(signal_4D,1),size(signal_4D,2),size(signal_4D,3)]));
-%                                 % Use y_4D to calculate CA concentration:
-%                                 gd_conc_4D = zeros(size(relSignal_4D));
-%                                 
-%                                 for i=1:size(relSignal_4D,3);
-%                                     y_3D = squeeze(y_4D(:,:,i));
-%                                     gd_log_term = (y_3D-1)./(a.*(y_3D.*cos(alpha_rad)-1));
-%                                     gd_conc_4D(:,:,i) = -(1./(relaxivity*TR)) .* log(gd_log_term);
-%                                 end
-%                                
-%                                 
-%                                 gd_conc_4D;
-%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%                                 % fit ktrans and Ve (simplex)
-%                                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%                                 obs_conc=squeeze(gd_conc_4D);
-%                                 init_params=[-2, .1];
-%                                 fprintf('%d,%d', x,y)
-%                                 [kin_par est_conc] = Step4b_Simplex_Fit_Kinetic_Tofts(obs_conc, gd_AIF, init_params, time_interval_mins);
-%                                 k1=exp(kin_par(1)); ktrans=k1;
-%                                 Ve=1/(1+exp(-kin_par(2)));
-%                                 k2 = k1/Ve;
-%                                 init_params=[kin_par(1) kin_par(2)];
-% %                                 toc
-%                                 if (ktrans > 5)
-%                                     ktrans = 0;
-%                                 end
-%                                 if (Ve > 5)
-%                                     Ve = 0;
-%                                 end
-%                                 fprintf('at (%d, %d), Ve=%f, ktrans=%f\n', x, y, Ve, ktrans);
-%                                 ktransmap(x,y)=ktrans;
-%                                 vemap(x,y)=Ve;
-%                                 aucmap(x,y)=trapz(obs_conc)/trapz(AIF);
-%                                 if ~(isempty(mask_file))
-%                                     if (mask_img(x,y,z) == 0)
-%                                         continue
-%                                     end
-%                                 end
+    
+    % note: would be nice for this loop to run regardless of dimension.
+    parfor x=1:xsize
+        for y=1:ysize
+            for z=1:zsize
+                
+                % Extract time signal
+                signal_4D=double(relSignal_4D(x,y,z,:));
+                
+                % Optional PCA Thresholding
+%                 if newdata(x,y,z,2) >= 10
+%                 %       dce4D.img(x,y,z,:) = mean([dce4D.img(abs(x+1),y,z,:), dce4D.img(abs(x-1),y,z,:), dce4D.img(x,abs(y+1),z,:), dce4D.img(x,abs(y-1),z,:)]);
+%                         ktransmap(x,y,z)=-.01;
+%                         vemap(x,y,z)=-.01;
+%                     continue
+%                 end
 
-                                s=dce4D.img(x,y,z,:);
+                % Ignore NaN Values
+                if any(isnan(signal_4D))
+                    continue
+                end
 
-                                if newdata(x,y,z,2) >= testmean
-%                                     dce4D.img(x,y,z,:) = mean([dce4D.img(abs(x+1),y,z,:), dce4D.img(abs(x-1),y,z,:), dce4D.img(x,abs(y+1),z,:), dce4D.img(x,abs(y-1),z,:)]);
-                                        ktransmap(x,y,z)=-.01;
-                                        vemap(x,y,z)=-.01;
-                                    continue
-                                end
-                                
-                                if any(isnan(s))
-                                    continue
-                                end
-                                
-                                input_signal_4D=zeros(1,1,1,tsize);
-                                for n=1:tsize
-                                        input_signal_4D(1,1,1,n)=s(1,1,1,n);
-                                end
-                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                                % convert 4D signal to 4D concentration (reference to
-                                % Step2a_DRO_signal_to_concentration.m)
-                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                                signal_4D = input_signal_4D;
-                                baselineVol_3D = mean(signal_4D(:,:,:,first_baseline:last_baseline),4);
-                                
-%                                 img_slice = dce4D.img(x,:,:,1);
-%                                 meanthresh = mean(img_slice(:));
-                                
+                % Low intensity threshold.
+                % Note: this threshold is arbitrary. It may be better to
+                % make it a parameter or automatically set it with regards
+                % to the distribution of values within the volume.
+                if baselineVol_3D(x,y,z) < 10
+                    continue
+                end                
+                
+                % Call on the fitting function to generate ktrans and Ve
+                % values.
+                observed_concentration=squeeze(signal_4D);
+                initial_params=[1, 1];
+                [kinetic_params, estimated_concentration] = Simplex_Fit_Kinetic_Tofts(observed_concentration, gd_AIF, initial_params, time_interval_mins);
+                ktrans=exp(kinetic_params(1));
+                Ve=1/(1+exp(-kinetic_params(2)));
+                
+                % Warm-Fitting for subsequent parameters. Optional, may
+                % increase speed but decrease accuracy. TODO: Improve
+                % warm-fitting.
+                % initial_params=[kinetic_params(1) kinetic_params(2)];
+                
+                % Mask degenerate results. These threshold are arbitrary.
+                % In particular for ktrans, it may be better 
+                if (ktrans > 3)
+                    ktrans = -.01;
+                end
+                if (Ve > 1)
+                    Ve = 1;
+                end
+                
+                % TODO: Add options for non-verbose mode. Code runs about
+                % 25% faster without printing output.
+                fprintf('at (%d, %d, %d), Ve=%f, ktrans=%f\n', x, y,z, Ve, ktrans);
+                
+                % Save out results.
+                ktransmap(x,y,z)=ktrans;
+                vemap(x,y,z)=Ve;
+                aucmap(x,y,z)=trapz(observed_concentration(last_baseline:tsize))/trapz(gd_AIF(last_baseline:tsize));
+            end
+        end
+    end
 
-                                if (baselineVol_3D < 10)
-                                ktransmap(x,y,z)=0;
-                                vemap(x,y,z)=0;
-                                aucmap(x,y,z)=0;
-                                continue
-                                end
-                                
-                                
-                                a = exp(-TR.*R1_pre(x,y,z));
-                                TERM = (1-a)./(1-a.*cos(alpha_rad));
-                                relSignal_4D = zeros(size(signal_4D));
-                                for i=1:size(signal_4D,4)
-                                    relSignal_4D(:,:,:,i) = signal_4D(:,:,:,i)./baselineVol_3D;
-                                end
-                                y_4D = relSignal_4D.*(repmat(TERM,[size(signal_4D,1),size(signal_4D,2),size(signal_4D,3),size(signal_4D,4)]));
-                                % Use y_4D to calculate CA concentration:
-                                gd_conc_4D = zeros(size(relSignal_4D));
-                                
-                                for i=1:size(relSignal_4D,4);
-                                    y_3D = squeeze(y_4D(:,:,:,i));
-                                    gd_log_term = (y_3D-1)./(a.*(y_3D.*cos(alpha_rad)-1));
-                                    gd_conc_4D(:,:,:,i) = -(1./(relaxivity*TR)) .* log(gd_log_term);
-                                end
-
-                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                                % fit ktrans and Ve (simplex)
-                                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                                obs_conc=squeeze(gd_conc_4D);
-                                init_params=[1, 1];
-                                [kin_par est_conc] = Step4b_Simplex_Fit_Kinetic_Tofts(obs_conc, gd_AIF, init_params, time_interval_mins);
-                                k1=exp(kin_par(1)); ktrans=k1;
-                                Ve=1/(1+exp(-kin_par(2)));
-                                k2 = k1/Ve;
-                                init_params=[kin_par(1) kin_par(2)];
-%                                 toc
-                                if (ktrans > 3)
-                                    ktrans = -.01;
-                                end
-                                if (Ve > 1)
-                                    Ve = 1;
-                                end
-                                fprintf('at (%d, %d, %d), Ve=%f, ktrans=%f\n', x, y,z, Ve, ktrans);
-                                ktransmap(x,y,z)=ktrans;
-                                vemap(x,y,z)=Ve;
-%                                 aucmap(x,y,z)=trapz(obs_conc(lpbs:lpbs+10))/trapz(gd_AIF(lpbs:lpbs+10));
-
-                              end
-                            end
-                          end
-                else
-                    fprintf('File path cannot be read.')
 end
     
-                        % save ktrans, ve, auc maps
-                        tmp=dce4D;
-                        tmp.hdr.dime.dim(1)=3;
-                        tmp.hdr.dime.dim(5)=1;
-                        tmp.hdr.dime.pixdim(1)=1;
-                        tmp.hdr.dime.datatype=16;
-                        tmp.hdr.dime.bitpix=32;  % make sure it is a float image
-                        tmp.hdr.dime.cal_max=0;
-                        tmp.hdr.dime.glmax=0;
-                        toc
-                                    
-                        tmp.img=ktransmap;
-                        fn=['ktrans.nii.gz']
-                        save_untouch_nii(tmp,strcat(output_path, fn));
+% Save images.
+% note: make outputs optionally specified
+% and make dimension options below more flexible.
+tmp.hdr.dime.dim(1)=3;
+tmp.hdr.dime.dim(5)=1;
+tmp.hdr.dime.pixdim(1)=1;
+tmp.hdr.dime.datatype=16;
+tmp.hdr.dime.bitpix=64;  % make sure it is a float image
+tmp.hdr.dime.cal_max=0;
+tmp.hdr.dime.glmax=0;
 
+tmp.img=ktransmap;
+fn=['ktrans.nii.gz']
+save_untouch_nii(tmp,strcat(output_path, fn));
 
-                        tmp.img=vemap;
-                        fn=['ve.nii.gz']
-                        save_untouch_nii(tmp,strcat(output_path, fn));
+tmp.img=vemap;
+fn=['ve.nii.gz']
+save_untouch_nii(tmp,strcat(output_path, fn));
 
-%                         tmp.img=aucmap;
-%                         fn=['auc.nii.gz']
-%                         save_untouch_nii(tmp,strcat(output_path, fn));
-                        
-%                         tmp.img = tmp.img(:,:,1)
-%                         fn=['dce_01.nii.gz']
-%                         save_untouch_nii(tmp,strcat(output_path, fn));
+tmp.img=aucmap;
+fn=['auc.nii.gz']
+save_untouch_nii(tmp,strcat(output_path, fn));
                                      
-		end                     
+end                     
