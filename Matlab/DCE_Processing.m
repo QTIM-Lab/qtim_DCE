@@ -36,15 +36,6 @@ R1_pre = 0;
 T1_mapping = 0;
 convert_AIF = 0;
 
-% Load mask if available.
-if ~(isempty(mask_file))
-    if ~(exist(mask_file))
-        error('Mask filename does not exist. Aborting processing.');
-    else
-        mask = load_untouch_nii(mask_file);
-        mask_img = mask.img;
-    end
-end
 
 % If input file exists, begin with processing.
 if ~(exist(input_file))
@@ -56,6 +47,18 @@ else
     zsize=size(dce4D.img,3);
     tsize=size(dce4D.img,4);
     
+    % Load mask if available.
+    if ~(isempty(mask_file))
+        if ~(exist(mask_file))
+            error('Mask filename does not exist. Aborting processing.');
+        else
+            mask = load_untouch_nii(mask_file);
+            mask_img = mask.img;
+        end
+    else
+        mask_img = dce4D.img;
+    end
+
     % Check for T1 Map.
     % note: make this work irrespective of dimensions
     if ~(isempty(T1_map))
@@ -79,9 +82,9 @@ else
     bolus_start = last_baseline + 1;
 
     % note: make this work irrespective of dimensions
-    ktransmap=zeros(xsize,ysize,zsize);
-    vemap=zeros(xsize,ysize,zsize);
-    aucmap=zeros(xsize,ysize,zsize);
+    ktransmap=zeros(xsize,ysize,zsize,tsize);
+    vemap=zeros(xsize,ysize,zsize,tsize);
+    aucmap=zeros(xsize,ysize,zsize,tsize);
 
     % Parse provided AIF. This presumes the provided AIF is already
     % converted to signal.
@@ -167,25 +170,25 @@ else
         PCA_img = dce4D.img;
         PCA_img(isnan(PCA_img)) = 0;
         R = PCA_output;
-        data = reshape(double(PCA_img), [xsize*ysize*zsize, tsize]);
+        data = reshape(PCA_img, [xsize*ysize*zsize, tsize]);
         [V, D] = eig(data'*data);
         [D, I] = sort(diag(D), 'descend');
         V = V(:, I);
         U = data*V;
         newdata = reshape (U(:, 1:R), [xsize, ysize, zsize, R]);
 
-        tmp=dce4D;
-        tmp.hdr.dime.dim(1)=4;
-        tmp.hdr.dime.dim(5)=10;
-        tmp.hdr.dime.pixdim(1)=1;
-        tmp.hdr.dime.datatype=16;
-        tmp.hdr.dime.bitpix=32;  % make sure it is a float image
-        tmp.hdr.dime.cal_max=0;
-        tmp.hdr.dime.glmax=0;     
-        tmp.img=newdata;
+        % tmp=dce4D;
+        % tmp.hdr.dime.dim(1)=4;
+        % tmp.hdr.dime.dim(5)=10;
+        % tmp.hdr.dime.pixdim(1)=1;
+        % tmp.hdr.dime.datatype=16;
+        % tmp.hdr.dime.bitpix=32;  % make sure it is a float image
+        % tmp.hdr.dime.cal_max=0;
+        % tmp.hdr.dime.glmax=0;     
+        % tmp.img=newdata;
         
-        fn=['eigs.nii.gz'];
-        save_untouch_nii(tmp,strcat(output_path, fn));
+        % fn=['eigs.nii.gz'];
+        % save_untouch_nii(tmp,strcat(output_path, fn));
         
         % Optionally threshold data values by the second component of the
         % PCA analysis. More testing needs to be done to see if this is a
@@ -202,7 +205,7 @@ else
     TERM = (1-a)./(1-a.*cos(alpha_rad));
     relSignal_4D = zeros(size(dce4D.img));
     for i=1:size(dce4D.img, 4)
-        relSignal_4D(:,:,:,i) = double(dce4D.img(:,:,:,i)) ./ baselineVol_3D .* TERM;
+        relSignal_4D(:,:,:,i) = (dce4D.img(:,:,:,i)) ./ baselineVol_3D .* TERM;
         relSignal_4D(:,:,:,i) = (relSignal_4D(:,:,:,i) - 1) ./ (a .* (relSignal_4D(:,:,:,i) .* cos(alpha_rad) - 1));
     end
     relSignal_4D = -(1./(relaxivity*TR)) .* log(relSignal_4D);
@@ -226,20 +229,27 @@ else
     parfor x=1:xsize
         for y=1:ysize
             for z=1:zsize
-                
+
+                % Check Mask
+                if mask_img(x,y,z) == 0
+                    continue
+                end
+
                 % Extract time signal
-                signal_4D=double(relSignal_4D(x,y,z,:));
+                signal_4D=(relSignal_4D(x,y,z,:));
                 
                 % Optional PCA Thresholding
-%                 if newdata(x,y,z,2) >= 10
-%                 %       dce4D.img(x,y,z,:) = mean([dce4D.img(abs(x+1),y,z,:), dce4D.img(abs(x-1),y,z,:), dce4D.img(x,abs(y+1),z,:), dce4D.img(x,abs(y-1),z,:)]);
-%                         ktransmap(x,y,z)=-.01;
-%                         vemap(x,y,z)=-.01;
-%                     continue
-%                 end
+                % if newdata(x,y,z,2) >= testmean
+                % %       dce4D.img(x,y,z,:) = mean([dce4D.img(abs(x+1),y,z,:), dce4D.img(abs(x-1),y,z,:), dce4D.img(x,abs(y+1),z,:), dce4D.img(x,abs(y-1),z,:)]);
+                %     ktransmap(x,y,z)=-.01;
+                %     vemap(x,y,z)=-.01;
+                %     continue
+                % end
 
                 % Ignore NaN Values
                 if any(isnan(signal_4D))
+                    ktransmap(x,y,z)=-.01;
+                    vemap(x,y,z)=-.01;                    
                     continue
                 end
 
@@ -254,10 +264,10 @@ else
                 % Call on the fitting function to generate ktrans and Ve
                 % values.
                 observed_concentration=squeeze(signal_4D);
-                initial_params=[1, 1];
+                initial_params=[.1, .01];
                 [kinetic_params, estimated_concentration] = Simplex_Fit_Kinetic_Tofts(observed_concentration, gd_AIF, initial_params, time_interval_mins);
-                ktrans=exp(kinetic_params(1));
-                Ve=1/(1+exp(-kinetic_params(2)));
+                ktrans=kinetic_params(1);
+                Ve=kinetic_params(2);
                 
                 % Warm-Fitting for subsequent parameters. Optional, may
                 % increase speed but decrease accuracy. TODO: Improve
@@ -290,11 +300,12 @@ end
 % Save images.
 % note: make outputs optionally specified
 % and make dimension options below more flexible.
+tmp = dce4D;
 tmp.hdr.dime.dim(1)=3;
 tmp.hdr.dime.dim(5)=1;
 tmp.hdr.dime.pixdim(1)=1;
 tmp.hdr.dime.datatype=16;
-tmp.hdr.dime.bitpix=64;  % make sure it is a float image
+tmp.hdr.dime.bitpix=32;  % make sure it is a float image
 tmp.hdr.dime.cal_max=0;
 tmp.hdr.dime.glmax=0;
 
