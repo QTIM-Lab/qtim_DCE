@@ -1,9 +1,6 @@
-% Only run this line once..
-%parpool(28)
-
-addpath /home/abeers/Projects/DCE_Package/Matlab/rdir/
-addpath /home/abeers/Projects/DCE_Package/Matlab/DCEEstimation/code/
-addpath /home/abeers/Projects/DCE_Package/Matlab/NIfTI_20140122/
+addpath ./rdir/
+addpath ./DCEEstimation/code/
+addpath ./NIfTI_20140122/
 
 %For CED/NHX data...
 directories_echo2 = [{'/qtim/users/data/CED/ANALYSIS/DCE/PREPARATION_FILES/**/VISIT_01/MAPS/dce_mc_st_eco2.nii'},...
@@ -26,128 +23,182 @@ directories_corrected = [{'/qtim/users/data/CED/ANALYSIS/DCE/PREPARATION_FILES/*
 % directories_echo2 = [{'/qtim2/users/data/TMZ/ANALYSIS/DCE/TMZ_05/VISIT_01/dce2_mc_ss.nii.gz'}];
 % directories_corrected = [{'/qtim2/users/data/TMZ/ANALYSIS/DCE/TMZ_05/VISIT_01/dce_rstar2_corrected.nii.gz'}];
 
+% This is a strange way to do this.. Not sure how to iterate through
+% variables in Matlab.
 directories = [directories_echo1, directories_echo2, directories_corrected];
 directory_lengths = [0, length(directories_echo1), length(directories_echo2) + length(directories_echo2), length(directories_echo2) + length(directories_echo2) + length(directories_corrected)];
 output_folder = [{'Echo1'},{'Echo2'},{'Corrected'}];
 
 % Changes these parameters..
-roi = 1;
-Flip_Angle = 10;
-Static_T1 = 1000;
-Destination_Path = '/home/abeers/Projects/DCE_Package/Matlab/Test_Results/';
-Blur = [.65];
-PCA_Components = [0];
-Dose = .5;
-Threshold = .01;
-Test_Code = '_Bad_Corrected_HighT1'
+Destination_Path = '/home/abeers/Data/DCE_Package/Test_Results/';
+Test_Code = '_Function_Test';
+Use_ROI = 1;
+Use_T1Map = 0;
+Use_IndividualAIF = 0;
 
-for dce_type_num = 3
+gaussian_kernel_blur = 0;
+PCA_levels = 0;
+gd_dose = 1;
+flip_angle = 10;
+T1_tissue = 1500;
+T1_blood = 1440;
+TR = 6.8;
+total_scan_time_seconds = 360;
+bolus_arrival_time_seconds = 160;
+hematocrit = .45;
+relaxivity = .0045;
+noise_threshold = .01;
+T1_blur = gaussian_kernel_blur;
+integration_method = 'recursive';
+fitting_method = 'simplex';
+PCA_output = 0;
+processes = 28;
+
+
+for dce_type_num = 1
     for subdirectory = (directory_lengths(dce_type_num)+1):directory_lengths(dce_type_num+1)
-        directories(subdirectory)
         dce_files = rdir(char(directories(subdirectory)));
         for dce = dce_files'
-            %if strfind(char(dce.name),'OLD') == 0
-            %   continue 
-            %end
-            for kernel_blur = Blur
-                for PCA = PCA_Components
-                    for t1_status = 1
-                        for aif_status = 1
-                    
-                    if ~exist(strcat(Destination_Path, char(output_folder(dce_type_num))), 'dir')
-                        mkdir(strcat(Destination_Path, char(output_folder(dce_type_num))));
-                    end
-                   
-     
-                            dce.name
-                            temp = strsplit(dce.name, '/');
-                            paths = length(temp);
-                            outputpath = strcat(temp(paths-3), '_', temp(paths-2));
-%                             if (roi == 1)
-%                             outputpath = strcat('/qtim2/users/data/NHX/ANALYSIS/DCE/DCE_KTRANS_ANALYSIS/ROI_ONLY/', char(output_folder(dce_type_num)), '/', char(outputpath),'_');
-%                             else
-%                             outputpath = strcat('/qtim2/users/data/NHX/ANALYSIS/DCE/DCE_KTRANS_ANALYSIS/FULL_VOL/', char(output_folder(dce_type_num)), '/', char(outputpath),'_');
-%                             end
-%                             outputpath = strcat('/home/abeers/Requests/Jayashree/TMZ_Data/TMZ_DCE_KTRANS_Andrew_Code/', char(output_folder(dce_type_num)), '/', char(outputpath),'_');
-                            outputpath = strcat(Destination_Path, char(output_folder(dce_type_num)), '/', char(outputpath),'_');
-                            autoAIF_dir = char(strjoin(temp(1:end-1),'/'));
-                            
-                            ROI_dir = char(strjoin(temp(1:end-2),'/'));
-                            ROI_dir = char(strcat(ROI_dir, '/ROISTATS/T1AxialPost/'));
+            
+            % Pre-Processing Options
+            for i_gaussian_kernel_blur = gaussian_kernel_blur
+            for i_PCA_levels = PCA_levels
+            for i_noise_threshold = noise_threshold
+            
+            % Injection Parameter Options
+            for i_flip_angle = flip_angle
+            for i_T1_tissue = T1_tissue
+            for i_T1_blood = T1_blood
+            for i_TR = TR
+            for i_bolus_arrival_time_seconds = bolus_arrival_time_seconds
+            for i_hematocrit = hematocrit
+            for i_relaxivity = relaxivity
+                
+            % Fitting Parameter Options
+            for i_integration_method = integration_method
+            for i_fitting_method = fitting_method
+            
+            % Input Parameter Map Options
+            for i_Use_T1Map = Use_T1Map
+            for i_Use_IndividualAIF = Use_IndividualAIF
+            
+            % Make Output Folder
+            if ~exist(strcat(Destination_Path, char(output_folder(dce_type_num))), 'dir')
+                mkdir(strcat(Destination_Path, char(output_folder(dce_type_num))));
+            end
+            
+            % Print Current File
+            dce.name
+            
+            % Get Patient/Visit Prefix, Find Output Path
+            [pathstr, name, ext] = fileparts(dce.name);
+            temp = strsplit(dce.name, filesep);
+            outputpath = strcat(temp(end-3), '_', temp(end-2));
+            outputpath = strcat(Destination_Path, char(output_folder(dce_type_num)), filesep, char(outputpath),'_');
+            
+            % Get Parameter Map Directories
+            autoAIF_dir = char(strjoin(temp(1:end-1),filesep));
+            ROI_dir = char(strjoin(temp(1:end-2),filesep));
+            ROI_dir = char(strcat(ROI_dir, '/ROISTATS/T1AxialPost/'));
 
-                            suffix = '';
-
-                            try
-                                if (aif_status == 2)
-                                found_AIF = rdir(char(strcat(autoAIF_dir, '/*NORDIC*')))
-                                autoAIF_file = found_AIF.name
-                                outputpath = char(strcat(outputpath, '_autoAIF_'))
-                                else
-                                    autoAIF_file = '';
-                                end
-
-                                if (t1_status == 2)
-                                found_T1Map = rdir(char(strcat(autoAIF_dir, '/*T1in*')))
-                                T1Map_file = found_T1Map.name
-                                outputpath = char(strcat(outputpath, '_t1map_'))
-                                else
-                                    T1Map_file = '';
-                                end
-
-                                if (roi == 1)
-                                found_ROI = char(strcat(ROI_dir, 'rT1AxialPostROI.nii'))
-                                ROI_file = found_ROI
-                                else
-                                    ROI_file = '';
-                                end
-
-                                % outputpath = char(strcat(outputpath,'_kernel_',num2str(kernel_blur),'_'));
-                                % outputpath = char(strcat(outputpath,'_PCA_',num2str(PCA),'_'));
-                                % outputpath = char(strcat(outputpath,'_dose_',num2str(Dose),'_'));
-                                % outputpath = char(strcat(outputpath,'_threshold_',num2str(Threshold),'_'));
-                                outputpath = char(strcat(outputpath, Test_Code));
-
-                                if exist(strcat(outputpath, 'ktrans.nii.gz'))
-                                   continue;
-                                end
-
-                                dce.name;
-                                ROI_file;
-                                T1Map_file;
-                                autoAIF_file;
-                                t1_status;
-                                aif_status;
-                                roi;
-
-                                % dcerecon_popAIF_tofts(dce.name, outputpath, ROI_file, autoAIF_file, T1Map_file, kernel_blur, PCA, Dose, Flip_Angle, Static_T1, Threshold);
-                                DCE_Processing(...
-                                dce.name,... %input_file
-                                outputpath,... %output_path
-                                ROI_file, ... %mask_file
-                                '',... %provided_AIF
-                                '',... %T1_map
-                                0,... %gaussian_kernel_blur
-                                2,... %PCA_levels
-                                1,... %gd_dose
-                                10,... %flip_angle
-                                1500,... %T1_tissue
-                                1440,... %T1_blood
-                                6.8,... %TR
-                                360,... % total_scan_time_seconds
-                                160,... % bolus_arrival_time_seconds
-                                .45,...% hematocrit
-                                .0045,... % relaxivity
-                                .01,... % noise_threhold
-                                0,... % T1_blur
-                                1,... % parallel_status
-                                0,... % PCA_output
-                                28) % processes
-                            catch
-                               a = 0;
-                            end
-                        end
-                    end 
+            try
+                
+                % Individual AIF Check
+                if (i_Use_IndividualAIF == 1)
+                found_AIF = rdir(char(strcat(autoAIF_dir, '/*NORDIC*')));
+                autoAIF_file = found_AIF.name;
+                outputpath = char(strcat(outputpath, '_autoAIF_'));
+                else
+                    autoAIF_file = '';
                 end
+
+                % T1Map Check
+                if (i_Use_T1Map == 1)
+                found_T1Map = rdir(char(strcat(autoAIF_dir, '/*T1in*')));
+                T1Map_file = found_T1Map.name;
+                outputpath = char(strcat(outputpath, '_t1map_'));
+                else
+                    T1Map_file = '';
+                end
+
+                % ROI Check
+                if (Use_ROI == 1)
+                found_ROI = char(strcat(ROI_dir, 'rT1AxialPostROI.nii'));
+                ROI_file = found_ROI;
+                else
+                    ROI_file = '';
+                end
+
+                % Integration Method Check
+                if length(i_integration_method) > 1
+                outputpath = char(strcat(outputpath,'_',i_integration_method{1},'_'));
+                end
+                % Fitting Method Check
+                if length(i_fitting_method) > 1
+                outputpath = char(strcat(outputpath,'_',i_fitting_method{1},'_'));
+                end
+                % Blur Check
+                if length(i_fitting_method) > 1
+                outputpath = char(strcat(outputpath,'_blur_',i_gaussian_blur{1},'_'));
+                end                
+                % PCA Check
+                if length(i_PCA_levels) > 1
+                outputpath = char(strcat(outputpath,'_pca_',i_PCA_levels{1},'_'));
+                end                      
+                % Threshold Check
+                if length(i_noise_threshold) > 1
+                outputpath = char(strcat(outputpath,'_threshold_',i_noise_threshold{1},'_'));
+                end     
+                
+                % outputpath = char(strcat(outputpath,'_kernel_',num2str(kernel_blur),'_'));
+                outputpath = char(strcat(outputpath, Test_Code));
+
+                % Check if this file has already been run.
+                if exist(strcat(outputpath, 'ktrans.nii.gz'))
+                   continue;
+                end
+
+                DCE_Processing(...
+                dce.name,... %input_file
+                outputpath,... %output_path
+                ROI_file, ... %mask_file
+                autoAIF_file,... %provided_AIF
+                T1Map_file,... %T1_map
+                i_gaussian_kernel_blur,... %gaussian_kernel_blur
+                i_PCA_levels,... %PCA_levels
+                i_gd_dose,... %gd_dose
+                i_flip_angle,... %flip_angle
+                i_T1_tissue,... %T1_tissue
+                i_T1_blood,... %T1_blood
+                i_TR,... %TR
+                i_total_scan_time_seconds,... % total_scan_time_seconds
+                i_bolus_arrival_time_seconds,... % bolus_arrival_time_seconds
+                i_hematocrit,...% hematocrit
+                i_relaxivity,... % relaxivity
+                i_noise_threshold,... % noise_threhold
+                T1_blur,... % T1_blur
+                i_integration_method,... % integration method
+                i_fitting_method,... % fitting method
+                PCA_output,... % PCA_output
+                processes) % processes
+        
+            catch
+                disp('Error! Cancelling Processing');
+            end
+            
+            end
+            end
+            end
+            end
+            end
+            end
+            end
+            end 
+            end
+            end
+            end
+            end
+            end
             end
         end
     end

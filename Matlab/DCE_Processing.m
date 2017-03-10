@@ -17,7 +17,8 @@ hematocrit,...
 relaxivity,...
 noise_threshold,...
 T1_blur,...
-parallel_status,...
+integration_method,...
+fitting_method,...
 PCA_output,...
 processes)
 
@@ -32,10 +33,7 @@ end
 % Initialize useful function variables.
 alpha=flip_angle;alpha_rad = (pi/180).*alpha;
 first_baseline = 1;
-R1_pre = 0;
-T1_mapping = 0;
 convert_AIF = 0;
-
 
 % If input file exists, begin with processing.
 if ~(exist(input_file))
@@ -67,7 +65,7 @@ else
 
         if (gaussian_kernel_blur > 0)
             for z = 1:size(T1_map_img,3)
-                T1_map_img(:,:,z) = imgaussfilt(T1_map_img(:,:,z), gaussian_kernel_blur);
+                T1_map_img(:,:,z) = imgaussfilt(T1_map_img(:,:,z), T1_blur);
             end
         end
 
@@ -145,8 +143,11 @@ else
             dose_scalar = 1/gd_dose;
             AIF=generateAIF(int64(tsize*dose_scalar),time_interval_seconds,bolus_start);
             newAIF = AIF;
-            for p = int64((bolus_start):dose_scalar:(dose_scalar*tsize-(bolus_start)))
-                newAIF(bolus_start + (p-bolus_start)/2) = (AIF(p) + AIF(p+1))/2;
+            dose_AIF_splits = int64((bolus_start):dose_scalar:(dose_scalar*tsize-(bolus_start)));
+            dose_index = 1;
+            for p = dose_AIF_splits
+                newAIF(bolus_start + int64((p-bolus_start)/dose_scalar)) = sum(AIF(dose_AIF_splits(dose_index):dose_AIF_splits(dose_index+1))/length(AIF(dose_AIF_splits(dose_index):dose_AIF_splits(dose_index+1))));
+                dose_index = dose_index + 1;
             end
             newAIF = newAIF(1:tsize);
             newAIF = newAIF./1.5;
@@ -164,39 +165,55 @@ else
         end
     end
     
-    % Optionally output the principal components of a PCA analysis.
-    if (PCA_output > 0)
-    
+    if (PCA_levels > 0 || noise_threshold > 0)
+        
+        if (PCA_levels < 1)
+            R = 2;
+        else
+            R = PCA_levels;
+        end
+        
         PCA_img = dce4D.img;
         PCA_img(isnan(PCA_img)) = 0;
-        R = PCA_output;
         data = reshape(PCA_img, [xsize*ysize*zsize, tsize]);
         [V, D] = eig(data'*data);
         [D, I] = sort(diag(D), 'descend');
         V = V(:, I);
         U = data*V;
-        newdata = reshape (U(:, 1:R), [xsize, ysize, zsize, R]);
+        eigenmap_data = reshape (U(:, 1:R), [xsize, ysize, zsize, R]);
+            
+        % Optionally output the principal components of a PCA analysis.
+        if (PCA_output == 1)
+            tmp=dce4D;
+            tmp.hdr.dime.dim(1)=4;
+            tmp.hdr.dime.dim(5)=10;
+            tmp.hdr.dime.pixdim(1)=1;
+            tmp.hdr.dime.datatype=16;
+            tmp.hdr.dime.bitpix=32;  % make sure it is a float image
+            tmp.hdr.dime.cal_max=0;
+            tmp.hdr.dime.glmax=0;     
+            tmp.img=newdata;
 
-        % tmp=dce4D;
-        % tmp.hdr.dime.dim(1)=4;
-        % tmp.hdr.dime.dim(5)=10;
-        % tmp.hdr.dime.pixdim(1)=1;
-        % tmp.hdr.dime.datatype=16;
-        % tmp.hdr.dime.bitpix=32;  % make sure it is a float image
-        % tmp.hdr.dime.cal_max=0;
-        % tmp.hdr.dime.glmax=0;     
-        % tmp.img=newdata;
+            fn=['eigs.nii.gz'];
+            save_untouch_nii(tmp,strcat(output_path, fn));
+        end
         
-        % fn=['eigs.nii.gz'];
-        % save_untouch_nii(tmp,strcat(output_path, fn));
+        % Optionally replace original data with eigenvalue-derived data.
+        if (PCA_levels > 0)
+            replacement_eigen_data = reshape(eigenmap_data, [], R);
+            replacement_eigen_data = replacement_eigen_data*V(:,1:R);
+            replacement_eigen_data = reshape(replacement_eigen_data, [xsize, ysize, zsize, tsize]);
+            dce4D.img = replacement_eigen_data;
+        end
         
         % Optionally threshold data values by the second component of the
         % PCA analysis. More testing needs to be done to see if this is a
         % consistent strategy.
-        if noise_threshold > 0
-            threshdata = newdata(:,:,:,2) > 0;
-            testmean = mean2(nonzeros(reshape(newdata(threshdata),1,[]))) * noise_threshold;
-        end
+        if (noise_threshold > 0)
+            threshdata = eigenmap_data(:,:,:,2) > 0;
+            testmean = mean2(nonzeros(reshape(eigenmap_data(threshdata),1,[]))) * noise_threshold;
+        end            
+            
     end
     
     % Convert input signal volume
@@ -239,17 +256,18 @@ else
                 signal_4D=(relSignal_4D(x,y,z,:));
                 
                 % Optional PCA Thresholding
-                % if newdata(x,y,z,2) >= testmean
-                % %       dce4D.img(x,y,z,:) = mean([dce4D.img(abs(x+1),y,z,:), dce4D.img(abs(x-1),y,z,:), dce4D.img(x,abs(y+1),z,:), dce4D.img(x,abs(y-1),z,:)]);
-                %     ktransmap(x,y,z)=-.01;
-                %     vemap(x,y,z)=-.01;
-                %     continue
-                % end
+                if eigenmap_data(x,y,z,2) >= testmean
+                    ktransmap(x,y,z)=-.01;
+                    vemap(x,y,z)=-.01;
+                    aucmap(x,y,z)=-.01;
+                    continue
+                end
 
                 % Ignore NaN Values
                 if any(isnan(signal_4D))
                     ktransmap(x,y,z)=-.01;
-                    vemap(x,y,z)=-.01;                    
+                    vemap(x,y,z)=-.01;
+                    aucmap(x,y,z)=-.01;
                     continue
                 end
 
@@ -265,7 +283,7 @@ else
                 % values.
                 observed_concentration=squeeze(signal_4D);
                 initial_params=[.1, .01];
-                [kinetic_params, estimated_concentration] = Simplex_Fit_Kinetic_Tofts(observed_concentration, gd_AIF, initial_params, time_interval_mins);
+                [kinetic_params, estimated_concentration] = Simplex_Fit_Kinetic_Tofts(observed_concentration, gd_AIF, initial_params, time_interval_mins, integration_method, fitting_method);
                 ktrans=kinetic_params(1);
                 Ve=kinetic_params(2);
                 
