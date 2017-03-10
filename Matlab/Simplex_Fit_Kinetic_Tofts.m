@@ -29,7 +29,7 @@ option.MaxFunEvals = 10000;
 kinetic_params = fminsearch(@kinetic_fit, initial_params,option);
 else
 options = optimoptions('lsqnonlin','Display','off');
-kinetic_params = lsqnonlin(@kinetic_fit, initial_params, options)
+kinetic_params = lsqnonlin(@kinetic_fit, initial_params,[],[],options);
 end
 
 % TODO: Verbose mode for debugging.

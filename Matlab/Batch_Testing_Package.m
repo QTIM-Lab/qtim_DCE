@@ -31,13 +31,13 @@ output_folder = [{'Echo1'},{'Echo2'},{'Corrected'}];
 
 % Changes these parameters..
 Destination_Path = '/home/abeers/Data/DCE_Package/Test_Results/';
-Test_Code = '_Function_Test';
+Test_Code = '_Function_Test_';
 Use_ROI = 1;
-Use_T1Map = 0;
-Use_IndividualAIF = 0;
+Use_T1Map = [0, 1];
+Use_IndividualAIF = [0, 1];
 
-gaussian_kernel_blur = 0;
-PCA_levels = 0;
+gaussian_kernel_blur = [0,.2,.4,.6,.8,1,1.2];
+PCA_levels = [0,1,2,3,4,5];
 gd_dose = 1;
 flip_angle = 10;
 T1_tissue = 1500;
@@ -47,10 +47,10 @@ total_scan_time_seconds = 360;
 bolus_arrival_time_seconds = 160;
 hematocrit = .45;
 relaxivity = .0045;
-noise_threshold = .01;
+noise_threshold = [-1, 0, .01, .1];
 T1_blur = gaussian_kernel_blur;
-integration_method = 'recursive';
-fitting_method = 'simplex';
+integration_method = {'recursive', 'conv'};
+fitting_method = {'simplex', 'l-m'};
 PCA_output = 0;
 processes = 28;
 
@@ -66,6 +66,8 @@ for dce_type_num = 1
             for i_noise_threshold = noise_threshold
             
             % Injection Parameter Options
+            for i_gd_dose = gd_dose
+            for i_total_scan_time_seconds = total_scan_time_seconds
             for i_flip_angle = flip_angle
             for i_T1_tissue = T1_tissue
             for i_T1_blood = T1_blood
@@ -88,13 +90,13 @@ for dce_type_num = 1
             end
             
             % Print Current File
-            dce.name
+            disp(dce.name)
             
             % Get Patient/Visit Prefix, Find Output Path
             [pathstr, name, ext] = fileparts(dce.name);
             temp = strsplit(dce.name, filesep);
             outputpath = strcat(temp(end-3), '_', temp(end-2));
-            outputpath = strcat(Destination_Path, char(output_folder(dce_type_num)), filesep, char(outputpath),'_');
+            outputpath = strcat(Destination_Path, char(output_folder(dce_type_num)), filesep, char(outputpath));
             
             % Get Parameter Map Directories
             autoAIF_dir = char(strjoin(temp(1:end-1),filesep));
@@ -130,29 +132,29 @@ for dce_type_num = 1
                 end
 
                 % Integration Method Check
-                if length(i_integration_method) > 1
+                if length(integration_method) > 1
                 outputpath = char(strcat(outputpath,'_',i_integration_method{1},'_'));
                 end
                 % Fitting Method Check
-                if length(i_fitting_method) > 1
+                if length(fitting_method) > 1
                 outputpath = char(strcat(outputpath,'_',i_fitting_method{1},'_'));
                 end
                 % Blur Check
-                if length(i_fitting_method) > 1
-                outputpath = char(strcat(outputpath,'_blur_',i_gaussian_blur{1},'_'));
+                if length(gaussian_kernel_blur) > 1
+                outputpath = char(strcat(outputpath,'_blur_',num2str(i_gaussian_kernel_blur),'_'));
                 end                
                 % PCA Check
-                if length(i_PCA_levels) > 1
-                outputpath = char(strcat(outputpath,'_pca_',i_PCA_levels{1},'_'));
+                if length(PCA_levels) > 1
+                outputpath = char(strcat(outputpath,'_pca_',num2str(i_PCA_levels),'_'));
                 end                      
                 % Threshold Check
-                if length(i_noise_threshold) > 1
-                outputpath = char(strcat(outputpath,'_threshold_',i_noise_threshold{1},'_'));
+                if length(noise_threshold) > 1
+                outputpath = char(strcat(outputpath,'_threshold_',num2str(i_noise_threshold),'_'));
                 end     
                 
                 % outputpath = char(strcat(outputpath,'_kernel_',num2str(kernel_blur),'_'));
                 outputpath = char(strcat(outputpath, Test_Code));
-
+                
                 % Check if this file has already been run.
                 if exist(strcat(outputpath, 'ktrans.nii.gz'))
                    continue;
@@ -186,6 +188,8 @@ for dce_type_num = 1
                 disp('Error! Cancelling Processing');
             end
             
+            end
+            end
             end
             end
             end

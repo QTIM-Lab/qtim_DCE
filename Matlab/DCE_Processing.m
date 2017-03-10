@@ -34,6 +34,7 @@ end
 alpha=flip_angle;alpha_rad = (pi/180).*alpha;
 first_baseline = 1;
 convert_AIF = 0;
+testmean=-1;
 
 % If input file exists, begin with processing.
 if ~(exist(input_file))
@@ -174,6 +175,7 @@ else
         end
         
         PCA_img = dce4D.img;
+        size(PCA_img)
         PCA_img(isnan(PCA_img)) = 0;
         data = reshape(PCA_img, [xsize*ysize*zsize, tsize]);
         [V, D] = eig(data'*data);
@@ -182,6 +184,17 @@ else
         U = data*V;
         eigenmap_data = reshape (U(:, 1:R), [xsize, ysize, zsize, R]);
             
+        % Optionally replace original data with eigenvalue-derived data.
+        if (PCA_levels > 0)
+            size(eigenmap_data)
+            replacement_eigen_data = reshape(eigenmap_data, [], R);
+            size(V(:,1:R))
+            size(replacement_eigen_data)
+            replacement_eigen_data = replacement_eigen_data*(V(:,1:R).');
+            replacement_eigen_data = reshape(replacement_eigen_data, [xsize, ysize, zsize, tsize]);
+            dce4D.img = replacement_eigen_data;
+        end
+        
         % Optionally output the principal components of a PCA analysis.
         if (PCA_output == 1)
             tmp=dce4D;
@@ -192,28 +205,21 @@ else
             tmp.hdr.dime.bitpix=32;  % make sure it is a float image
             tmp.hdr.dime.cal_max=0;
             tmp.hdr.dime.glmax=0;     
-            tmp.img=newdata;
+            tmp.img=eigenmap_data;
 
-            fn=['eigs.nii.gz'];
+            fn=['eigs.nii.gz']
             save_untouch_nii(tmp,strcat(output_path, fn));
-        end
-        
-        % Optionally replace original data with eigenvalue-derived data.
-        if (PCA_levels > 0)
-            replacement_eigen_data = reshape(eigenmap_data, [], R);
-            replacement_eigen_data = replacement_eigen_data*V(:,1:R);
-            replacement_eigen_data = reshape(replacement_eigen_data, [xsize, ysize, zsize, tsize]);
-            dce4D.img = replacement_eigen_data;
         end
         
         % Optionally threshold data values by the second component of the
         % PCA analysis. More testing needs to be done to see if this is a
         % consistent strategy.
-        if (noise_threshold > 0)
+        if (noise_threshold > -1)
             threshdata = eigenmap_data(:,:,:,2) > 0;
             testmean = mean2(nonzeros(reshape(eigenmap_data(threshdata),1,[]))) * noise_threshold;
         end            
-            
+    else
+        eigenmap_data = dce4D.img;
     end
     
     % Convert input signal volume
@@ -256,11 +262,13 @@ else
                 signal_4D=(relSignal_4D(x,y,z,:));
                 
                 % Optional PCA Thresholding
-                if eigenmap_data(x,y,z,2) >= testmean
-                    ktransmap(x,y,z)=-.01;
-                    vemap(x,y,z)=-.01;
-                    aucmap(x,y,z)=-.01;
-                    continue
+                if noise_threshold > -1
+                    if eigenmap_data(x,y,z,2) >= testmean
+                        ktransmap(x,y,z)=-.01;
+                        vemap(x,y,z)=-.01;
+                        aucmap(x,y,z)=-.01;
+                        continue
+                    end
                 end
 
                 % Ignore NaN Values
@@ -303,12 +311,12 @@ else
                 
                 % TODO: Add options for non-verbose mode. Code runs about
                 % 25% faster without printing output.
-                fprintf('at (%d, %d, %d), Ve=%f, ktrans=%f\n', x, y,z, Ve, ktrans);
+                %fprintf('at (%d, %d, %d), Ve=%f, ktrans=%f\n', x, y,z, Ve, ktrans);
                 
                 % Save out results.
                 ktransmap(x,y,z)=ktrans;
-                vemap(x,y,z)=Ve;
-                aucmap(x,y,z)=trapz(observed_concentration(last_baseline:tsize))/trapz(gd_AIF(last_baseline:tsize));
+                %vemap(x,y,z)=Ve;
+                %aucmap(x,y,z)=trapz(observed_concentration(last_baseline:tsize))/trapz(gd_AIF(last_baseline:tsize));
             end
         end
     end
@@ -318,6 +326,10 @@ end
 % Save images.
 % note: make outputs optionally specified
 % and make dimension options below more flexible.
+% tmp = dce4D;
+% fn=['dce_pp.nii.gz']
+% save_untouch_nii(tmp,strcat(output_path, fn));
+
 tmp = dce4D;
 tmp.hdr.dime.dim(1)=3;
 tmp.hdr.dime.dim(5)=1;
@@ -331,12 +343,12 @@ tmp.img=ktransmap;
 fn=['ktrans.nii.gz']
 save_untouch_nii(tmp,strcat(output_path, fn));
 
-tmp.img=vemap;
-fn=['ve.nii.gz']
-save_untouch_nii(tmp,strcat(output_path, fn));
-
-tmp.img=aucmap;
-fn=['auc.nii.gz']
-save_untouch_nii(tmp,strcat(output_path, fn));
+% tmp.img=vemap;
+% fn=['ve.nii.gz']
+% save_untouch_nii(tmp,strcat(output_path, fn));
+% 
+% tmp.img=aucmap;
+% fn=['auc.nii.gz']
+% save_untouch_nii(tmp,strcat(output_path, fn));
                                      
 end                     
