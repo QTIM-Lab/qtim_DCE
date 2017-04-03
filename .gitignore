@@ -110,3 +110,6 @@ octave-workspace
 
 # Simulink autosave extension
 .autosave
+
+# Hide test data
+.csv
