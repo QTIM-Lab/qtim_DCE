@@ -112,4 +112,4 @@ octave-workspace
 .autosave
 
 # Hide test data
-.csv
+*.csv
